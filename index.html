@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>여행용 양방향 번역기</title>
 
-  <!-- PWA & Mobile Web App Settings -->
   <meta name="theme-color" content="#007aff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -30,12 +29,7 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    h2 {
-      font-size: 20px;
-      margin-top: 8px;
-      margin-bottom: 16px;
-      text-align: center;
-    }
+    h2 { font-size: 20px; margin-top: 8px; margin-bottom: 16px; text-align: center; }
 
     .card {
       background: var(--card-bg);
@@ -45,92 +39,48 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
 
-    .card-title {
-      font-size: 16px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+    .card-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 
     select {
-      width: 100%;
-      padding: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      border-radius: 12px;
-      border: 1px solid #e5e5ea;
-      background: #f8f9fa;
-      color: var(--text);
-      margin-top: 4px;
-      box-sizing: border-box;
+      width: 100%; padding: 12px; font-size: 16px; font-weight: 600;
+      border-radius: 12px; border: 1px solid #e5e5ea; background: #f8f9fa;
+      color: var(--text); margin-top: 4px; box-sizing: border-box;
     }
 
     button {
-      width: 100%;
-      padding: 16px;
-      font-size: 17px;
-      font-weight: 700;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-      color: white;
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: opacity 0.2s;
+      width: 100%; padding: 16px; font-size: 17px; font-weight: 700;
+      border-radius: 12px; border: none; cursor: pointer; color: white;
+      margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;
     }
 
-    button:active {
-      opacity: 0.8;
-    }
-
+    button:active { opacity: 0.8; }
     .btn-my { background: var(--primary); }
     .btn-target { background: var(--success); }
 
     .result-box {
-      margin-top: 12px;
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 10px;
-      min-height: 52px;
-      border: 1px solid #e5e5ea;
+      margin-top: 12px; padding: 14px; background: #f8f9fa;
+      border-radius: 12px; border: 1px solid #e5e5ea;
     }
 
-    .input-text {
-      font-size: 13px;
-      color: var(--subtext);
-      margin-bottom: 4px;
-      word-break: break-all;
-    }
-
+    .input-text { font-size: 13px; color: var(--subtext); margin-bottom: 6px; word-break: break-all; }
+    
+    /* 상대방에게 보여주기 편하도록 번역 텍스트 강조 */
     .translated-text {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text);
-      word-break: break-all;
+      font-size: 22px; font-weight: 700; color: #000000;
+      line-height: 1.3; word-break: break-word; margin-bottom: 10px;
     }
 
-    .phrase-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 8px;
+    /* 다시 듣기 및 제어 버튼 액션 바 */
+    .action-bar { display: flex; gap: 8px; margin-top: 8px; }
+    .btn-action {
+      background: #e5e5ea; color: #1c1c1e; padding: 10px; font-size: 14px;
+      font-weight: 600; border-radius: 8px; margin-top: 0; flex: 1;
     }
 
+    .phrase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
     .phrase-btn {
-      background: #e5e5ea;
-      color: var(--text);
-      padding: 12px 10px;
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 10px;
-      text-align: left;
-      margin-top: 0;
-      justify-content: flex-start;
+      background: #e5e5ea; color: var(--text); padding: 12px 10px;
+      font-size: 14px; font-weight: 600; border-radius: 10px; text-align: left; margin-top: 0;
     }
   </style>
 </head>
@@ -138,9 +88,9 @@
 
   <h2>✈️ 스페인 & 포르투 여행 번역기</h2>
 
-  <!-- 1. 내가 말할 때 전달할 언어 선택 -->
+  <!-- 1. 언어 선택 -->
   <div class="card">
-    <div class="card-title">🌐 내가 번역할 언어 선택</div>
+    <div class="card-title">🌐 상대방 언어 선택</div>
     <select id="langSelect">
       <option value="es">🇪🇸 스페인어 (Spain)</option>
       <option value="pt">🇵🇹 포르투갈어 (Portugal)</option>
@@ -148,27 +98,33 @@
     </select>
   </div>
 
-  <!-- 2. 내가 말하기 (한국어 -> 선택한 언어) -->
+  <!-- 2. 내가 말하기 (한국어 -> 선택 언어) -->
   <div class="card">
     <div class="card-title">🇰🇷 내가 말하기 (한국어)</div>
     <button class="btn-my" onclick="startSpeechMy()">🎤 말하기 시작</button>
     <div class="result-box">
-      <div id="myInput" class="input-text">버튼을 누르고 한국어로 말씀하세요.</div>
+      <div id="myInput" class="input-text">한국어로 말씀하시면 번역 및 음성 재생됩니다.</div>
       <div id="myOutput" class="translated-text"></div>
+      <div class="action-bar" id="myActionBar" style="display:none;">
+        <button class="btn-action" onclick="replayMySpeech()">🔊 음성 다시 듣기</button>
+      </div>
     </div>
   </div>
 
-  <!-- 3. 상대방 말하기 (언어 자동 감지 -> 한국어) -->
+  <!-- 3. 상대방 말하기 (자동 감지 -> 한국어) -->
   <div class="card">
     <div class="card-title">🎧 상대방 말하기 (언어 자동 감지)</div>
     <button class="btn-target" onclick="startSpeechTargetAuto()">🎧 상대방 말 듣기</button>
     <div class="result-box">
-      <div id="targetInput" class="input-text">상대방이 말씀할 때 버튼을 누르세요.</div>
+      <div id="targetInput" class="input-text">상대방이 말할 때 버튼을 누르세요.</div>
       <div id="targetOutput" class="translated-text"></div>
+      <div class="action-bar" id="targetActionBar" style="display:none;">
+        <button class="btn-action" onclick="replayTargetSpeech()">🔊 한국어로 다시 듣기</button>
+      </div>
     </div>
   </div>
 
-  <!-- 4. 오프라인 비상용 필수 표현 -->
+  <!-- 4. 오프라인 필수 표현 -->
   <div class="card">
     <div class="card-title">⚡ 오프라인 필수 표현 (비상용)</div>
     <div class="phrase-grid">
@@ -180,27 +136,27 @@
   </div>
 
   <script>
-    // 언어 코드 매핑
     const langMap = { es: 'es-ES', pt: 'pt-PT', en: 'en-US', ko: 'ko-KR' };
-
-    // 오프라인용 백업 딕셔너리
     const offlineDict = {
       es: { '감사합니다': 'Gracias', '얼마인가요?': '¿Cuánto cuesta?', '화장실 어디예요?': '¿Dónde está el baño?', '메뉴판 주세요': 'La cuenta, por favor' },
       pt: { '감사합니다': 'Obrigado', '얼마인가요?': 'Quanto custa?', '화장실 어디예요?': 'Onde fica o banheiro?', '메뉴판 주세요': 'A ementa, por favor' },
       en: { '감사합니다': 'Thank you', '얼마인가요?': 'How much is it?', '화장실 어디예요?': 'Where is the bathroom?', '메뉴판 주세요': 'Menu, please' }
     };
 
-    // 음성 인식 객체 생성
+    let lastMyTranslated = "";
+    let lastMyLang = "";
+    let lastTargetTranslated = "";
+
     function getSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
-        alert("이 브라우저는 음성 인식을 지원하지 않습니다. Safari 또는 Chrome을 사용하세요.");
+        alert("이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용하세요.");
         return null;
       }
       return new SpeechRecognition();
     }
 
-    // 1. 내가 한국어로 말하기
+    // 내가 말하기
     function startSpeechMy() {
       const recognition = getSpeechRecognition();
       if (!recognition) return;
@@ -211,6 +167,7 @@
 
       document.getElementById('myInput').innerText = "듣고 있는 중...";
       document.getElementById('myOutput').innerText = "";
+      document.getElementById('myActionBar').style.display = "none";
 
       recognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
@@ -219,46 +176,52 @@
         const targetLang = document.getElementById('langSelect').value;
         const translated = await translateText(text, 'ko', targetLang);
 
+        lastMyTranslated = translated;
+        lastMyLang = langMap[targetLang];
+
         document.getElementById('myOutput').innerText = translated;
-        speak(translated, langMap[targetLang]);
+        document.getElementById('myActionBar').style.display = "flex";
+        
+        speak(translated, lastMyLang);
       };
     }
 
-    // 2. 상대방 말하기 (자동 언어 감지 적용)
+    // 상대방 말하기
     function startSpeechTargetAuto() {
       const recognition = getSpeechRecognition();
       if (!recognition) return;
 
-      // 유럽 현지 음성 인식을 지원하기 위해 다국어 기본 인식 모드로 설정
-      recognition.lang = 'es-ES'; 
+      recognition.lang = 'es-ES';
       recognition.interimResults = false;
       recognition.start();
 
       document.getElementById('targetInput').innerText = "상대방 언어 감지 및 듣는 중...";
       document.getElementById('targetOutput').innerText = "";
+      document.getElementById('targetActionBar').style.display = "none";
 
       recognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById('targetInput').innerText = `상대방 입력: "${text}"`;
 
-        // 자동 언어 감지 및 한국어 번역 API 호출
         const { translatedText, detectedLang } = await translateWithAutoDetect(text, 'ko');
 
         const langNames = { es: '🇪🇸 스페인어', pt: '🇵🇹 포르투갈어', en: '🇬🇧 영어', fr: '🇫🇷 프랑스어', de: '🇩🇪 독일어' };
         const detectedName = langNames[detectedLang] || `🌐 ${detectedLang.toUpperCase()}`;
 
-        document.getElementById('targetOutput').innerText = `[${detectedName} 감지]\n${translatedText}`;
+        lastTargetTranslated = translatedText;
+
+        document.getElementById('targetOutput').innerText = `[${detectedName}]\n${translatedText}`;
+        document.getElementById('targetActionBar').style.display = "flex";
+
         speak(translatedText, 'ko-KR');
       };
     }
 
-    // 일반 번역 API 호출 (한국어 -> 대상 언어)
     async function translateText(text, from, to) {
       if (!navigator.onLine) {
         const dict = offlineDict[to] || {};
         return dict[text] || `[오프라인] ${text}`;
       }
-
       try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`);
         const data = await res.json();
@@ -268,39 +231,49 @@
       }
     }
 
-    // 자동 언어 감지 번역 API 호출 (상대방 언어 -> 한국어)
     async function translateWithAutoDetect(text, targetLang = 'ko') {
       try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${targetLang}`);
         const data = await res.json();
-        
         const detectedLang = data.responseData.detectedLanguage || 'en';
         const translatedText = data.responseData.translatedText;
-
         return { translatedText, detectedLang };
       } catch (err) {
         return { translatedText: "번역 처리 실패", detectedLang: "unknown" };
       }
     }
 
-    // 음성 합성 (TTS)
+    // 음성 재생 (TTS)
     function speak(text, lang) {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
+        utterance.rate = 0.9; // 현지인이 잘 들을 수 있도록 살짝 천천히 재생
         window.speechSynthesis.speak(utterance);
       }
     }
 
-    // 오프라인 필수 표현 재생
+    function replayMySpeech() {
+      if (lastMyTranslated) speak(lastMyTranslated, lastMyLang);
+    }
+
+    function replayTargetSpeech() {
+      if (lastTargetTranslated) speak(lastTargetTranslated, 'ko-KR');
+    }
+
     function playPhrase(korText) {
       const targetLang = document.getElementById('langSelect').value;
       const translated = (offlineDict[targetLang] && offlineDict[targetLang][korText]) || korText;
 
+      lastMyTranslated = translated;
+      lastMyLang = langMap[targetLang];
+
       document.getElementById('myInput').innerText = `나: "${korText}"`;
       document.getElementById('myOutput').innerText = translated;
-      speak(translated, langMap[targetLang]);
+      document.getElementById('myActionBar').style.display = "flex";
+
+      speak(translated, lastMyLang);
     }
   </script>
 </body>
