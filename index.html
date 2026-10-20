@@ -2,7 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- [수정] user-scalable=no, maximum-scale 제거 (접근성) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>여행용 양방향 번역기</title>
 
   <meta name="theme-color" content="#007aff">
@@ -10,10 +11,25 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="여행번역기">
 
+  <!-- [추가] CSP: 허용 출처 제한. 적용 후 OCR이 동작하는지 꼭 테스트하세요. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self';
+             script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net;
+             connect-src https://api.mymemory.translated.net https://open.er-api.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com;
+             img-src 'self' blob: data:;
+             worker-src blob: https://cdn.jsdelivr.net;
+             style-src 'self' 'unsafe-inline'">
+
+  <!-- [수정] 버전 고정(5.1.1). SRI 해시는 srihash.org 에서 이 URL로 생성한 뒤
+       태그에 integrity="sha384-해시값" 속성을 추가하세요. -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"
+          crossorigin="anonymous"></script>
+
   <style>
     :root {
       --primary: #007aff;
       --success: #34c759;
+      --warning: #ff9500;
       --bg: #f2f2f7;
       --card-bg: #ffffff;
       --text: #1c1c1e;
@@ -41,7 +57,7 @@
 
     .card-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 
-    select {
+    select, input[type="number"] {
       width: 100%; padding: 12px; font-size: 16px; font-weight: 600;
       border-radius: 12px; border: 1px solid #e5e5ea; background: #f8f9fa;
       color: var(--text); margin-top: 4px; box-sizing: border-box;
@@ -56,6 +72,7 @@
     button:active { opacity: 0.8; }
     .btn-my { background: var(--primary); }
     .btn-target { background: var(--success); }
+    .btn-camera { background: var(--warning); }
 
     .result-box {
       margin-top: 12px; padding: 14px; background: #f8f9fa;
@@ -63,14 +80,27 @@
     }
 
     .input-text { font-size: 13px; color: var(--subtext); margin-bottom: 6px; word-break: break-all; }
-    
-    /* 상대방에게 보여주기 편하도록 번역 텍스트 강조 */
+
     .translated-text {
-      font-size: 22px; font-weight: 700; color: #000000;
-      line-height: 1.3; word-break: break-word; margin-bottom: 10px;
+      font-size: 20px; font-weight: 700; color: #000000;
+      line-height: 1.3; word-break: break-word; margin-bottom: 6px;
     }
 
-    /* 다시 듣기 및 제어 버튼 액션 바 */
+    .error-text { color: #d70015; }
+
+    .eur-display {
+      font-size: 32px; font-weight: 800; color: #007aff; text-align: center; margin: 8px 0;
+    }
+    .krw-display {
+      font-size: 22px; font-weight: 700; color: #34c759; text-align: center;
+    }
+
+    /* [추가] 숫자 자동 인식 확인 안내 */
+    .number-notice {
+      display: none; margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+      background: #fff4e5; color: #8a5300; font-size: 13px; font-weight: 600; text-align: center;
+    }
+
     .action-bar { display: flex; gap: 8px; margin-top: 8px; }
     .btn-action {
       background: #e5e5ea; color: #1c1c1e; padding: 10px; font-size: 14px;
@@ -82,13 +112,17 @@
       background: #e5e5ea; color: var(--text); padding: 12px 10px;
       font-size: 14px; font-weight: 600; border-radius: 10px; text-align: left; margin-top: 0;
     }
+
+    #imagePreview {
+      width: 100%; max-height: 200px; object-fit: contain; border-radius: 10px; margin-top: 10px; display: none;
+    }
   </style>
 </head>
 <body>
 
-  <h2>✈️ 스페인 & 포르투 여행 번역기</h2>
+  <h2>✈️ 스페인 & 포르투 프리미엄 번역기</h2>
 
-  <!-- 1. 언어 선택 -->
+  <!-- 1. 상대방 언어 선택 -->
   <div class="card">
     <div class="card-title">🌐 상대방 언어 선택</div>
     <select id="langSelect">
@@ -98,7 +132,7 @@
     </select>
   </div>
 
-  <!-- 2. 내가 말하기 (한국어 -> 선택 언어) -->
+  <!-- 2. 내가 말하기 -->
   <div class="card">
     <div class="card-title">🇰🇷 내가 말하기 (한국어)</div>
     <button class="btn-my" onclick="startSpeechMy()">🎤 말하기 시작</button>
@@ -106,14 +140,14 @@
       <div id="myInput" class="input-text">한국어로 말씀하시면 번역 및 음성 재생됩니다.</div>
       <div id="myOutput" class="translated-text"></div>
       <div class="action-bar" id="myActionBar" style="display:none;">
-        <button class="btn-action" onclick="replayMySpeech()">🔊 음성 다시 듣기</button>
+        <button class="btn-action" onclick="replayMySpeech()">🔊 다시 들려주기</button>
       </div>
     </div>
   </div>
 
-  <!-- 3. 상대방 말하기 (자동 감지 -> 한국어) -->
+  <!-- 3. 상대방 말하기 (음성 감지) -->
   <div class="card">
-    <div class="card-title">🎧 상대방 말하기 (언어 자동 감지)</div>
+    <div class="card-title">🎧 상대방 말하기 (자동 감지)</div>
     <button class="btn-target" onclick="startSpeechTargetAuto()">🎧 상대방 말 듣기</button>
     <div class="result-box">
       <div id="targetInput" class="input-text">상대방이 말할 때 버튼을 누르세요.</div>
@@ -124,7 +158,31 @@
     </div>
   </div>
 
-  <!-- 4. 오프라인 필수 표현 -->
+  <!-- 4. 유로 환율 계산기 -->
+  <div class="card">
+    <div class="card-title">💶 유로(€) 실시간 계산기</div>
+    <input type="number" id="eurInput" placeholder="유로 금액 입력 (예: 25.5)" oninput="onManualEurInput()">
+    <div class="result-box" style="text-align: center;">
+      <div id="eurDisplay" class="eur-display">€ 0</div>
+      <div id="krwDisplay" class="krw-display">약 0 원</div>
+      <div id="numberNotice" class="number-notice">⚠️ 음성에서 자동 인식된 숫자입니다. 실제 금액과 맞는지 꼭 확인하세요.</div>
+      <div id="exchangeRateInfo" class="input-text" style="margin-top:6px;">환율 정보 로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 5. 메뉴판/표지판 촬영 번역 (OCR) -->
+  <div class="card">
+    <div class="card-title">📷 메뉴판 / 표지판 촬영 번역</div>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="processImage(this)">
+    <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📷 카메라로 촬영 / 사진 선택</button>
+    <img id="imagePreview" alt="미리보기">
+    <div class="result-box">
+      <div id="ocrStatus" class="input-text">사진을 촬영하거나 선택하면 글자를 인식합니다.</div>
+      <div id="ocrOutput" class="translated-text"></div>
+    </div>
+  </div>
+
+  <!-- 6. 오프라인 필수 표현 -->
   <div class="card">
     <div class="card-title">⚡ 오프라인 필수 표현 (비상용)</div>
     <div class="phrase-grid">
@@ -138,22 +196,69 @@
   <script>
     const langMap = { es: 'es-ES', pt: 'pt-PT', en: 'en-US', ko: 'ko-KR' };
     const offlineDict = {
-      es: { '감사합니다': 'Gracias', '얼마인가요?': '¿Cuánto cuesta?', '화장실 어디예요?': '¿Dónde está el baño?', '메뉴판 주세요': 'La cuenta, por favor' },
+      // [수정] 스페인어 '메뉴판'을 계산서(La cuenta)에서 메뉴판(La carta)으로 변경
+      es: { '감사합니다': 'Gracias', '얼마인가요?': '¿Cuánto cuesta?', '화장실 어디예요?': '¿Dónde está el baño?', '메뉴판 주세요': 'La carta, por favor' },
       pt: { '감사합니다': 'Obrigado', '얼마인가요?': 'Quanto custa?', '화장실 어디예요?': 'Onde fica o banheiro?', '메뉴판 주세요': 'A ementa, por favor' },
       en: { '감사합니다': 'Thank you', '얼마인가요?': 'How much is it?', '화장실 어디예요?': 'Where is the bathroom?', '메뉴판 주세요': 'Menu, please' }
     };
 
-    let lastMyTranslated = "";
-    let lastMyLang = "";
-    let lastTargetTranslated = "";
+    const DEFAULT_RATE = 1480;       // 기본 예비 환율
+    const RATE_MIN = 1000;           // [추가] 환율 정상 범위
+    const RATE_MAX = 3000;
+    let eurToKrwRate = DEFAULT_RATE;
+    let lastMyTranslated = "", lastMyLang = "", lastTargetTranslated = "";
+    let currentPreviewUrl = null;
+
+    // 환율 가져오기 + [추가] 값 검증
+    async function fetchExchangeRate() {
+      const info = document.getElementById('exchangeRateInfo');
+      try {
+        const res = await fetch('https://open.er-api.com/v6/latest/EUR');
+        const data = await res.json();
+        const rate = Number(data && data.rates && data.rates.KRW);
+        if (Number.isFinite(rate) && rate >= RATE_MIN && rate <= RATE_MAX) {
+          eurToKrwRate = rate;
+          info.innerText = `현재 적용 환율: 1€ = ${Math.round(rate).toLocaleString()}원`;
+        } else {
+          info.innerText = `환율 응답이 비정상이라 기본 환율을 사용합니다: 1€ = ${DEFAULT_RATE}원`;
+        }
+      } catch (e) {
+        info.innerText = `기본 적용 환율: 1€ = ${DEFAULT_RATE}원 (오프라인 모드)`;
+      }
+      calculateExchange();
+    }
+    fetchExchangeRate();
+
+    function calculateExchange() {
+      const val = parseFloat(document.getElementById('eurInput').value) || 0;
+      const krw = Math.round(val * eurToKrwRate);
+      document.getElementById('eurDisplay').innerText = `€ ${val.toLocaleString()}`;
+      document.getElementById('krwDisplay').innerText = `약 ${krw.toLocaleString()} 원`;
+    }
+
+    // [추가] 사용자가 직접 입력하면 자동 인식 경고 숨김
+    function onManualEurInput() {
+      document.getElementById('numberNotice').style.display = 'none';
+      calculateExchange();
+    }
 
     function getSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
-        alert("이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari를 사용하세요.");
+        alert("이 브라우저는 음성 인식을 지원하지 않습니다.");
         return null;
       }
       return new SpeechRecognition();
+    }
+
+    function showError(el, message) {
+      el.innerText = message;
+      el.classList.add('error-text');
+    }
+
+    function showResult(el, message) {
+      el.innerText = message;
+      el.classList.remove('error-text');
     }
 
     // 내가 말하기
@@ -165,24 +270,34 @@
       recognition.interimResults = false;
       recognition.start();
 
+      const out = document.getElementById('myOutput');
       document.getElementById('myInput').innerText = "듣고 있는 중...";
-      document.getElementById('myOutput').innerText = "";
+      showResult(out, "");
       document.getElementById('myActionBar').style.display = "none";
+
+      recognition.onerror = () => {
+        document.getElementById('myInput').innerText = "음성을 인식하지 못했습니다. 다시 시도해 주세요.";
+      };
 
       recognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById('myInput').innerText = `나: "${text}"`;
 
         const targetLang = document.getElementById('langSelect').value;
-        const translated = await translateText(text, 'ko', targetLang);
+        const result = await translateText(text, 'ko', targetLang);
 
-        lastMyTranslated = translated;
+        // [수정] 오류 메시지는 음성으로 읽지 않음
+        if (!result.ok) {
+          showError(out, result.text);
+          return;
+        }
+
+        lastMyTranslated = result.text;
         lastMyLang = langMap[targetLang];
 
-        document.getElementById('myOutput').innerText = translated;
+        showResult(out, result.text);
         document.getElementById('myActionBar').style.display = "flex";
-        
-        speak(translated, lastMyLang);
+        speak(result.text, lastMyLang);
       };
     }
 
@@ -195,39 +310,105 @@
       recognition.interimResults = false;
       recognition.start();
 
+      const out = document.getElementById('targetOutput');
       document.getElementById('targetInput').innerText = "상대방 언어 감지 및 듣는 중...";
-      document.getElementById('targetOutput').innerText = "";
+      showResult(out, "");
       document.getElementById('targetActionBar').style.display = "none";
+
+      recognition.onerror = () => {
+        document.getElementById('targetInput').innerText = "음성을 인식하지 못했습니다. 다시 시도해 주세요.";
+      };
 
       recognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById('targetInput').innerText = `상대방 입력: "${text}"`;
 
-        const { translatedText, detectedLang } = await translateWithAutoDetect(text, 'ko');
+        // 숫자 인지 시 환율 카드에 입력하되, [수정] 확인 안내를 함께 표시
+        const numbers = text.match(/\d+(\.\d+)?/g);
+        if (numbers && numbers.length > 0) {
+          document.getElementById('eurInput').value = numbers[0];
+          calculateExchange();
+          document.getElementById('numberNotice').style.display = 'block';
+        }
 
-        const langNames = { es: '🇪🇸 스페인어', pt: '🇵🇹 포르투갈어', en: '🇬🇧 영어', fr: '🇫🇷 프랑스어', de: '🇩🇪 독일어' };
-        const detectedName = langNames[detectedLang] || `🌐 ${detectedLang.toUpperCase()}`;
+        const result = await translateWithAutoDetect(text, 'ko');
 
-        lastTargetTranslated = translatedText;
+        if (!result.ok) {
+          showError(out, result.translatedText);
+          return;
+        }
 
-        document.getElementById('targetOutput').innerText = `[${detectedName}]\n${translatedText}`;
+        const langNames = { es: '🇪🇸 스페인어', pt: '🇵🇹 포르투갈어', en: '🇬🇧 영어' };
+        const detectedName = langNames[result.detectedLang] || `🌐 ${String(result.detectedLang).toUpperCase()}`;
+
+        lastTargetTranslated = result.translatedText;
+
+        showResult(out, `[${detectedName}]\n${result.translatedText}`);
         document.getElementById('targetActionBar').style.display = "flex";
-
-        speak(translatedText, 'ko-KR');
+        speak(result.translatedText, 'ko-KR');
       };
     }
 
+    // 카메라 OCR 스캔 및 번역
+    async function processImage(input) {
+      if (!input.files || !input.files[0]) return;
+
+      const file = input.files[0];
+      const preview = document.getElementById('imagePreview');
+
+      // [수정] 이전 미리보기 URL 해제 (메모리 누수 방지)
+      if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+      currentPreviewUrl = URL.createObjectURL(file);
+      preview.src = currentPreviewUrl;
+      preview.style.display = 'block';
+
+      const status = document.getElementById('ocrStatus');
+      const out = document.getElementById('ocrOutput');
+      status.innerText = "⏳ 이미지에서 글자를 분석하는 중입니다...";
+      showResult(out, "");
+
+      let worker = null;
+      try {
+        worker = await Tesseract.createWorker(['spa', 'por', 'eng']);
+        const ret = await worker.recognize(file);
+
+        const extractedText = ret.data.text.trim();
+        if (!extractedText) {
+          status.innerText = "글자를 인식하지 못했습니다. 다시 촬영해 주세요.";
+          return;
+        }
+
+        status.innerText = `추출된 원문: "${extractedText.replace(/\n/g, ' ')}"`;
+
+        const result = await translateWithAutoDetect(extractedText, 'ko');
+        if (result.ok) showResult(out, result.translatedText);
+        else showError(out, result.translatedText);
+
+      } catch (err) {
+        status.innerText = "이미지 분석 중 오류가 발생했습니다.";
+      } finally {
+        if (worker) { try { await worker.terminate(); } catch (e) {} }
+        input.value = ""; // 같은 사진을 다시 선택해도 동작하도록 초기화
+      }
+    }
+
+    // [수정] 결과를 { ok, text } 로 반환해 오류와 정상 번역을 구분
     async function translateText(text, from, to) {
       if (!navigator.onLine) {
         const dict = offlineDict[to] || {};
-        return dict[text] || `[오프라인] ${text}`;
+        if (dict[text]) return { ok: true, text: dict[text] };
+        return { ok: false, text: "오프라인 상태입니다. 아래 '오프라인 필수 표현'을 이용해 주세요." };
       }
       try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`);
         const data = await res.json();
-        return data.responseData.translatedText;
+        // MyMemory는 한도 초과 등일 때 오류 문구를 번역문 자리에 넣어 보냄 → 상태 코드 확인
+        if (Number(data.responseStatus) !== 200 || !data.responseData || !data.responseData.translatedText) {
+          return { ok: false, text: "번역 서비스 오류 또는 일일 사용 한도 초과입니다. 잠시 후 다시 시도해 주세요." };
+        }
+        return { ok: true, text: data.responseData.translatedText };
       } catch (err) {
-        return "번역 오류가 발생했습니다.";
+        return { ok: false, text: "번역 오류가 발생했습니다. 네트워크를 확인해 주세요." };
       }
     }
 
@@ -235,32 +416,28 @@
       try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${targetLang}`);
         const data = await res.json();
+        if (Number(data.responseStatus) !== 200 || !data.responseData || !data.responseData.translatedText) {
+          return { ok: false, translatedText: "번역 서비스 오류 또는 일일 사용 한도 초과입니다. 잠시 후 다시 시도해 주세요.", detectedLang: "unknown" };
+        }
         const detectedLang = data.responseData.detectedLanguage || 'en';
-        const translatedText = data.responseData.translatedText;
-        return { translatedText, detectedLang };
+        return { ok: true, translatedText: data.responseData.translatedText, detectedLang };
       } catch (err) {
-        return { translatedText: "번역 처리 실패", detectedLang: "unknown" };
+        return { ok: false, translatedText: "번역 처리 실패. 네트워크를 확인해 주세요.", detectedLang: "unknown" };
       }
     }
 
-    // 음성 재생 (TTS)
     function speak(text, lang) {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
-        utterance.rate = 0.9; // 현지인이 잘 들을 수 있도록 살짝 천천히 재생
+        utterance.rate = 0.9;
         window.speechSynthesis.speak(utterance);
       }
     }
 
-    function replayMySpeech() {
-      if (lastMyTranslated) speak(lastMyTranslated, lastMyLang);
-    }
-
-    function replayTargetSpeech() {
-      if (lastTargetTranslated) speak(lastTargetTranslated, 'ko-KR');
-    }
+    function replayMySpeech() { if (lastMyTranslated) speak(lastMyTranslated, lastMyLang); }
+    function replayTargetSpeech() { if (lastTargetTranslated) speak(lastTargetTranslated, 'ko-KR'); }
 
     function playPhrase(korText) {
       const targetLang = document.getElementById('langSelect').value;
@@ -270,7 +447,7 @@
       lastMyLang = langMap[targetLang];
 
       document.getElementById('myInput').innerText = `나: "${korText}"`;
-      document.getElementById('myOutput').innerText = translated;
+      showResult(document.getElementById('myOutput'), translated);
       document.getElementById('myActionBar').style.display = "flex";
 
       speak(translated, lastMyLang);
