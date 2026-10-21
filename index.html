@@ -116,6 +116,12 @@
     #imagePreview {
       width: 100%; max-height: 200px; object-fit: contain; border-radius: 10px; margin-top: 10px; display: none;
     }
+    /* [추가] 음성/오류 안내 토스트 */
+    .toast {
+      position: fixed; left: 16px; right: 16px; bottom: 20px; padding: 12px 14px;
+      background: rgba(28,28,30,0.92); color: #fff; font-size: 14px; font-weight: 600;
+      border-radius: 12px; text-align: center; display: none; z-index: 10;
+    }
   </style>
 </head>
 <body>
@@ -193,7 +199,16 @@
     </div>
   </div>
 
+  <div id="toast" class="toast"></div>
+
   <script>
+    // [추가] MyMemory 하루 한도: 익명 약 5,000자 / 이메일 등록 시 약 50,000자
+    // 본인 이메일을 넣으면 한도가 10배로 늘어납니다. (이메일은 MyMemory로 전송됩니다)
+    const MYMEMORY_EMAIL = "";
+    const MAX_OCR_CHARS = 2000;   // 사진 1장당 번역할 최대 글자 수
+    const CHUNK_LEN = 250;        // MyMemory 요청당 500바이트 제한 → 안전하게 분할
+    const translationCache = new Map();
+
     const langMap = { es: 'es-ES', pt: 'pt-PT', en: 'en-US', ko: 'ko-KR' };
     const offlineDict = {
       // [수정] 스페인어 '메뉴판'을 계산서(La cuenta)에서 메뉴판(La carta)으로 변경
@@ -266,6 +281,7 @@
       const recognition = getSpeechRecognition();
       if (!recognition) return;
 
+      unlockSpeech();
       recognition.lang = 'ko-KR';
       recognition.interimResults = false;
       recognition.start();
@@ -306,7 +322,8 @@
       const recognition = getSpeechRecognition();
       if (!recognition) return;
 
-      recognition.lang = 'es-ES';
+      unlockSpeech();
+      recognition.lang = langMap[document.getElementById('langSelect').value] || 'en-US';
       recognition.interimResults = false;
       recognition.start();
 
@@ -349,14 +366,88 @@
       };
     }
 
-    // 카메라 OCR 스캔 및 번역
+    // ---------- 번역 (MyMemory) ----------
+    function quotaMessage() {
+      return MYMEMORY_EMAIL
+        ? "오늘 무료 번역 한도를 모두 사용했습니다. 내일 다시 시도해 주세요."
+        : "오늘 무료 번역 한도(익명 약 5,000자)를 모두 사용했습니다. 코드 상단 MYMEMORY_EMAIL에 이메일을 넣으면 한도가 약 10배로 늘어납니다.";
+    }
+
+    async function mmTranslate(text, from, to) {
+      const key = `${from}|${to}|${text}`;
+      if (translationCache.has(key)) return translationCache.get(key);
+      try {
+        let url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`;
+        if (MYMEMORY_EMAIL) url += `&de=${encodeURIComponent(MYMEMORY_EMAIL)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const status = Number(data.responseStatus);
+        const translated = data.responseData && data.responseData.translatedText;
+        const raw = `${translated || ''} ${data.responseDetails || ''}`;
+        if (status === 429 || /ALL AVAILABLE FREE TRANSLATIONS|MYMEMORY WARNING/i.test(raw)) {
+          return { ok: false, quota: true, text: quotaMessage() };
+        }
+        if (status !== 200 || !translated) {
+          return { ok: false, text: "번역 서비스 오류입니다. 잠시 후 다시 시도해 주세요." };
+        }
+        const result = { ok: true, text: translated, detectedLang: (data.responseData && data.responseData.detectedLanguage) || 'en' };
+        translationCache.set(key, result);
+        return result;
+      } catch (err) {
+        return { ok: false, text: "번역 오류가 발생했습니다. 네트워크를 확인해 주세요." };
+      }
+    }
+
+    async function translateText(text, from, to) {
+      if (!navigator.onLine) {
+        const dict = offlineDict[to] || {};
+        if (dict[text]) return { ok: true, text: dict[text] };
+        return { ok: false, text: "오프라인 상태입니다. 아래 '오프라인 필수 표현'을 이용해 주세요." };
+      }
+      return mmTranslate(text, from, to);
+    }
+
+    async function translateWithAutoDetect(text, targetLang = 'ko') {
+      const r = await mmTranslate(text, 'autodetect', targetLang);
+      return { ok: r.ok, translatedText: r.text, detectedLang: r.detectedLang || 'unknown' };
+    }
+
+    // ---------- 카메라 OCR ----------
+    // OCR 잡음 줄(기호/짧은 조각)과 중복 줄을 제거해 번역 글자 수를 줄임
+    function cleanOcrLines(raw) {
+      const seen = new Set();
+      return raw.split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(l => {
+        const letters = (l.match(/\p{L}/gu) || []).length;
+        if (letters < 3 || letters / l.length < 0.5) return false;
+        const k = l.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+
+    function makeChunks(lines) {
+      const chunks = [];
+      let cur = "";
+      for (let line of lines) {
+        while (line.length > CHUNK_LEN) {
+          if (cur) { chunks.push(cur); cur = ""; }
+          chunks.push(line.slice(0, CHUNK_LEN));
+          line = line.slice(CHUNK_LEN);
+        }
+        if (cur && (cur.length + 1 + line.length) > CHUNK_LEN) { chunks.push(cur); cur = ""; }
+        cur = cur ? cur + "\n" + line : line;
+      }
+      if (cur) chunks.push(cur);
+      return chunks;
+    }
+
     async function processImage(input) {
       if (!input.files || !input.files[0]) return;
 
       const file = input.files[0];
       const preview = document.getElementById('imagePreview');
 
-      // [수정] 이전 미리보기 URL 해제 (메모리 누수 방지)
       if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
       currentPreviewUrl = URL.createObjectURL(file);
       preview.src = currentPreviewUrl;
@@ -367,73 +458,121 @@
       status.innerText = "⏳ 이미지에서 글자를 분석하는 중입니다...";
       showResult(out, "");
 
+      // [수정] 선택한 언어만 인식 (더 빠르고 정확). 메뉴판 언어에 맞게 상단 언어 선택을 바꿔 주세요.
+      const lang = document.getElementById('langSelect').value;
+      const ocrLang = { es: 'spa', pt: 'por', en: 'eng' }[lang] || 'eng';
+
       let worker = null;
       try {
-        worker = await Tesseract.createWorker(['spa', 'por', 'eng']);
+        worker = await Tesseract.createWorker(ocrLang);
         const ret = await worker.recognize(file);
 
-        const extractedText = ret.data.text.trim();
-        if (!extractedText) {
-          status.innerText = "글자를 인식하지 못했습니다. 다시 촬영해 주세요.";
+        const lines = cleanOcrLines(ret.data.text || "");
+        if (!lines.length) {
+          status.innerText = "글자를 인식하지 못했습니다. 밝은 곳에서 다시 촬영해 주세요.";
           return;
         }
 
-        status.innerText = `추출된 원문: "${extractedText.replace(/\n/g, ' ')}"`;
+        let joined = lines.join("\n");
+        let truncated = false;
+        if (joined.length > MAX_OCR_CHARS) { joined = joined.slice(0, MAX_OCR_CHARS); truncated = true; }
 
-        const result = await translateWithAutoDetect(extractedText, 'ko');
-        if (result.ok) showResult(out, result.translatedText);
-        else showError(out, result.translatedText);
+        status.innerText = `추출된 원문(${joined.length}자): "${joined.replace(/\n/g, ' ')}"`;
+
+        // [수정] 한 번에 보내지 않고 나눠서 번역, 한도 초과 시 중단하고 지금까지 결과는 표시
+        const chunks = makeChunks(joined.split("\n"));
+        const parts = [];
+        let failure = null;
+        for (let i = 0; i < chunks.length; i++) {
+          const r = await mmTranslate(chunks[i], lang, 'ko');
+          if (!r.ok) { failure = r; break; }
+          parts.push(r.text);
+          showResult(out, parts.join("\n"));
+        }
+
+        let note = "";
+        if (truncated) note += `\n\n(글자가 많아 앞부분 ${MAX_OCR_CHARS}자만 번역했습니다.)`;
+        if (failure) {
+          if (parts.length) showResult(out, parts.join("\n") + note + "\n\n⚠️ " + failure.text);
+          else showError(out, failure.text);
+        } else {
+          showResult(out, parts.join("\n") + note);
+        }
 
       } catch (err) {
         status.innerText = "이미지 분석 중 오류가 발생했습니다.";
       } finally {
         if (worker) { try { await worker.terminate(); } catch (e) {} }
-        input.value = ""; // 같은 사진을 다시 선택해도 동작하도록 초기화
+        input.value = "";
       }
     }
 
-    // [수정] 결과를 { ok, text } 로 반환해 오류와 정상 번역을 구분
-    async function translateText(text, from, to) {
-      if (!navigator.onLine) {
-        const dict = offlineDict[to] || {};
-        if (dict[text]) return { ok: true, text: dict[text] };
-        return { ok: false, text: "오프라인 상태입니다. 아래 '오프라인 필수 표현'을 이용해 주세요." };
-      }
-      try {
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`);
-        const data = await res.json();
-        // MyMemory는 한도 초과 등일 때 오류 문구를 번역문 자리에 넣어 보냄 → 상태 코드 확인
-        if (Number(data.responseStatus) !== 200 || !data.responseData || !data.responseData.translatedText) {
-          return { ok: false, text: "번역 서비스 오류 또는 일일 사용 한도 초과입니다. 잠시 후 다시 시도해 주세요." };
-        }
-        return { ok: true, text: data.responseData.translatedText };
-      } catch (err) {
-        return { ok: false, text: "번역 오류가 발생했습니다. 네트워크를 확인해 주세요." };
-      }
+    // ---------- 음성 재생 ----------
+    let voicesCache = [];
+    let currentUtterance = null;   // 재생 중 가비지 컬렉션 방지
+    let toastTimer = null;
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.style.display = 'none'; }, 5000);
     }
 
-    async function translateWithAutoDetect(text, targetLang = 'ko') {
+    function loadVoices() {
+      if ('speechSynthesis' in window) voicesCache = window.speechSynthesis.getVoices() || [];
+    }
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // 버튼을 누른 순간(사용자 동작) 음성 엔진을 깨움: iOS 등은 비동기 번역 뒤에는 재생이 막힘
+    function unlockSpeech() {
+      if (!('speechSynthesis' in window)) return;
       try {
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${targetLang}`);
-        const data = await res.json();
-        if (Number(data.responseStatus) !== 200 || !data.responseData || !data.responseData.translatedText) {
-          return { ok: false, translatedText: "번역 서비스 오류 또는 일일 사용 한도 초과입니다. 잠시 후 다시 시도해 주세요.", detectedLang: "unknown" };
-        }
-        const detectedLang = data.responseData.detectedLanguage || 'en';
-        return { ok: true, translatedText: data.responseData.translatedText, detectedLang };
-      } catch (err) {
-        return { ok: false, translatedText: "번역 처리 실패. 네트워크를 확인해 주세요.", detectedLang: "unknown" };
-      }
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+
+    function pickVoice(lang) {
+      if (!voicesCache.length) loadVoices();
+      const norm = v => v.lang.replace('_', '-').toLowerCase();
+      const want = lang.toLowerCase();
+      const base = want.split('-')[0];
+      return voicesCache.find(v => norm(v) === want)
+          || voicesCache.find(v => norm(v).split('-')[0] === base)
+          || null;
     }
 
     function speak(text, lang) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang;
-        utterance.rate = 0.9;
-        window.speechSynthesis.speak(utterance);
+      if (!('speechSynthesis' in window)) {
+        showToast("이 브라우저는 음성 재생을 지원하지 않습니다.");
+        return;
       }
+      const synth = window.speechSynthesis;
+      synth.cancel();
+
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang;
+      u.rate = 0.9;
+      u.volume = 1;
+      const voice = pickVoice(lang);
+      if (voice) { u.voice = voice; u.lang = voice.lang; }
+      else if (voicesCache.length) showToast(`기기에 ${lang} 음성이 없어 기본 음성으로 재생합니다.`);
+
+      u.onerror = (e) => {
+        if (e.error !== 'canceled' && e.error !== 'interrupted') {
+          showToast(`음성 재생 오류(${e.error}). 무음 모드/미디어 볼륨을 확인해 주세요.`);
+        }
+      };
+      currentUtterance = u;
+
+      // cancel() 직후 바로 speak()하면 일부 브라우저(Android Chrome)에서 무음이 되는 문제 회피
+      setTimeout(() => { synth.resume(); synth.speak(u); }, 120);
     }
 
     function replayMySpeech() { if (lastMyTranslated) speak(lastMyTranslated, lastMyLang); }
